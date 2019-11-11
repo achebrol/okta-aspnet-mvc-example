@@ -11,6 +11,7 @@ using IdentityModel.Client;
 using System;
 using System.Collections.Generic;
 using Microsoft.IdentityModel.Tokens;
+using System.Net.Http;
 
 [assembly: OwinStartup(typeof(OktaAspNetExample.Startup))]
 
@@ -42,7 +43,7 @@ namespace OktaAspNetExample
                 Authority = authority,
                 RedirectUri = redirectUri,
                 ResponseType = OpenIdConnectResponseType.CodeIdToken,
-                Scope = OpenIdConnectScope.OpenIdProfile,
+                Scope = OpenIdConnectScope.OpenId,
                 PostLogoutRedirectUri = postLogoutRedirectUri,
                 TokenValidationParameters = new TokenValidationParameters
                 {
@@ -51,19 +52,33 @@ namespace OktaAspNetExample
 
                 Notifications = new OpenIdConnectAuthenticationNotifications
                 {
-                    AuthorizationCodeReceived = async n => 
+                    AuthorizationCodeReceived = async n =>
                     {
                         // Exchange code for access and ID tokens
-                        var tokenClient = new TokenClient(authority + "/v1/token", clientId, clientSecret);
-                        var tokenResponse = await tokenClient.RequestAuthorizationCodeAsync(n.Code, redirectUri);
-
+                        var httpClient = new HttpClient();
+                       // var tokenClient = new TokenClient(authority + "/as/token.oauth2", clientId, clientSecret);
+                       // var tokenResponse = await tokenClient.RequestAuthorizationCodeAsync(n.Code, redirectUri);
+                        var tokenResponse = await httpClient.RequestAuthorizationCodeTokenAsync(new AuthorizationCodeTokenRequest()
+                        {
+                            Address = authority + "/as/token.oauth2",
+                            ClientId=clientId,
+                            ClientSecret=clientSecret,
+                            Code =n.Code,
+                            RedirectUri= redirectUri
+                            
+                        });
                         if (tokenResponse.IsError)
                         {
                             throw new Exception(tokenResponse.Error);
                         }
 
-                        var userInfoClient = new UserInfoClient(authority + "/v1/userinfo");
-                        var userInfoResponse = await userInfoClient.GetAsync(tokenResponse.AccessToken);
+                        //var userInfoClient = new UserInfoClient(authority + "/idp/userinfo.openid");
+                        //var userInfoResponse = await userInfoClient.GetAsync(tokenResponse.AccessToken);
+                        var userInfoResponse = await httpClient.GetUserInfoAsync(new UserInfoRequest()
+                        {
+                            Address= authority + "/idp/userinfo.openid",
+                            Token=tokenResponse.AccessToken
+                        });
                         var claims = new List<Claim>();
                         claims.AddRange(userInfoResponse.Claims);
                         claims.Add(new Claim("id_token", tokenResponse.IdentityToken));
